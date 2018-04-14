@@ -11,6 +11,9 @@ private:
   bool debug_; /* Enables debugging output */
 
   /* Add member variables here */
+  const float alpha;
+  const float beta;
+  float window_size_;
 
 public:
   /* Public interface for the congestion controller */
