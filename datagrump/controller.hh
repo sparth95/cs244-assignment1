@@ -11,7 +11,7 @@ private:
   bool debug_; /* Enables debugging output */
 
   /* Add member variables here */
-
+  float window_size;
 public:
   /* Public interface for the congestion controller */
   /* You can change these if you prefer, but will need to change

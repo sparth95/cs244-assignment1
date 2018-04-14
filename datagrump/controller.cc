@@ -1,20 +1,24 @@
 #include <iostream>
+#include <cmath>
 
 #include "controller.hh"
 #include "timestamp.hh"
+
 
 using namespace std;
 
 /* Default constructor */
 Controller::Controller( const bool debug )
   : debug_( debug )
-{}
+{
+  window_size = 1.f; // init
+}
 
 /* Get current window size, in datagrams */
 unsigned int Controller::window_size()
 {
   /* Default: fixed window size of 100 outstanding datagrams */
-  unsigned int the_window_size = 50;
+  unsigned int the_window_size = 20;
 
   if ( debug_ ) {
     cerr << "At time " << timestamp_ms()
