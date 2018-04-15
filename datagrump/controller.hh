@@ -14,6 +14,8 @@ private:
   const float alpha;
   const float beta;
   float window_size_;
+  bool mult_inc;
+  bool update;
 
 public:
   /* Public interface for the congestion controller */
