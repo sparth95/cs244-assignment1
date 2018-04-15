@@ -16,6 +16,8 @@ private:
   float window_size_;
   bool mult_inc;
   bool update;
+  int outstanding;
+  void update_member(bool timeout);
 
 public:
   /* Public interface for the congestion controller */
@@ -30,18 +32,19 @@ public:
 
   /* A datagram was sent */
   void datagram_was_sent( const uint64_t sequence_number,
-			  const uint64_t send_timestamp,
-			  const bool after_timeout );
+        const uint64_t send_timestamp,
+        const bool after_timeout );
 
   /* An ack was received */
   void ack_received( const uint64_t sequence_number_acked,
-		     const uint64_t send_timestamp_acked,
-		     const uint64_t recv_timestamp_acked,
-		     const uint64_t timestamp_ack_received );
+         const uint64_t send_timestamp_acked,
+         const uint64_t recv_timestamp_acked,
+         const uint64_t timestamp_ack_received );
 
   /* How long to wait (in milliseconds) if there are no acks
      before sending one more datagram */
   unsigned int timeout_ms();
+
 };
 
 #endif
