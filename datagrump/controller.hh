@@ -2,9 +2,12 @@
 #define CONTROLLER_HH
 
 #include <cstdint>
+#include <cstdio>
+#include <set>
+
+using namespace std;
 
 /* Congestion controller interface */
-
 class Controller
 {
 private:
@@ -14,10 +17,13 @@ private:
   const float alpha;
   const float beta;
   float window_size_;
-  bool mult_inc;
+  int state;
   bool update;
   int outstanding;
-  void update_member(bool timeout);
+  float rtt;
+  set< pair<uint64_t, uint64_t> > ts_rtt;
+  void update_member(bool timeout, int state);
+  void get_stat(float &min, float &mean, float &dev);
 
 public:
   /* Public interface for the congestion controller */
