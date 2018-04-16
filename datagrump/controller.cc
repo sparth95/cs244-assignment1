@@ -65,7 +65,8 @@ void Controller::update_member(bool timeout, int state = 0)
     if(state == 0){
       window_size_ = max(1.f, window_size_ + alpha/window_size_);
     } else if(state == 1 && update){
-      outstanding = window_size();
+      if(outstanding == 0)
+        outstanding = window_size();
       window_size_ = window_size_ * 1.5f; // probe
     } else if(state == 2 && update){
       outstanding = window_size();
@@ -158,7 +159,7 @@ void Controller::ack_received( const uint64_t sequence_number_acked,
   bool stable = (dev/mean < 0.1);
   
   // transisition to stable state
-  if(state == 0 && (stable && rtt_/min_rtt < 0.1)){ // queue has cleared
+  if(state == 0 && (stable || rtt_/min_rtt < 1.1)){ // queue has cleared
     state = 1;
   } else if(state == 1 && outstanding == 0){
     state = 2;
@@ -181,6 +182,7 @@ void Controller::ack_received( const uint64_t sequence_number_acked,
     }
     if(max_rtt/min_rtt < 1.5 || dev/mean < 0.1){
       state = 1;  // go again into probing
+      outstanding = window_size();
       window_size_ = window_size_*1.5; // probe successful change baseline
     } else {
       state = 0; // go to unstable phase
