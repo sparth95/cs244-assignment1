@@ -8,6 +8,7 @@
 using namespace std;
 
 /* Congestion controller interface */
+
 class Controller
 {
 private:
@@ -20,6 +21,7 @@ private:
   int state;
   bool update;
   int outstanding;
+  float prob_probability;
   float rtt;
   set< pair<uint64_t, uint64_t> > ts_rtt;
   void update_member(bool timeout, int state);

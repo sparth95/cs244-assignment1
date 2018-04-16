@@ -1,5 +1,7 @@
 #include <iostream>
 #include <cmath>
+#include <cstdlib>
+#include <cstdio>
 #include <limits>
 #include <cstddef>
 #include <vector>
@@ -8,6 +10,9 @@
 #include "timestamp.hh"
 
 using namespace std;
+
+const float inc = 1.25f;
+const float base_prob_probability = 0.6f;
 
 /* Default constructor */
 Controller::Controller( const bool debug )
@@ -18,7 +23,8 @@ Controller::Controller( const bool debug )
     state(0),
     update(true),
     outstanding(0),
-    rtt(-1.f),
+    prob_probability(base_prob_probability),
+    rtt(0),
     ts_rtt(set<pair<uint64_t, uint64_t> >())
 {}
 
@@ -55,9 +61,11 @@ void Controller::get_stat(float &min_rtt, float &mean, float &dev)
 
 void Controller::update_member(bool timeout, int state = 0)
 {
+
   if(timeout){
     if(update){
-      outstanding = window_size();
+      if(outstanding == 0)
+        outstanding = window_size();
       window_size_ = max(1.f, window_size_ * beta);
     }
   }  
@@ -67,19 +75,16 @@ void Controller::update_member(bool timeout, int state = 0)
     } else if(state == 1 && update){
       if(outstanding == 0)
         outstanding = window_size();
-      window_size_ = window_size_ * 1.5f; // probe
+      window_size_ = max(1.f, window_size_ + alpha/window_size_);
+      // window_size_ = window_size_;  // stable
     } else if(state == 2 && update){
-      outstanding = window_size();
-      window_size_ = (window_size_ / 1.5f) * 0.5f; // counter the queues
+      if(outstanding == 0)
+        outstanding = window_size();
+      window_size_ = window_size_*inc; // probe
     } else if(state == 3 && update){
-      outstanding = window_size();
-      window_size_ = window_size_*2.f; // stable pace
-    } else if(state == 4 && update){
-      outstanding = window_size();  // stable pace
-      window_size_ = window_size_;
-    // } else if(state == 5 && update){
-    //   outstanding = window_size();
-    //   window_size_ = window_size_; // stable pace
+      if(outstanding == 0)
+        outstanding = window_size();
+      window_size_ = (window_size_/inc)* (2-inc); // control queue
     }
   }
 
@@ -110,8 +115,8 @@ void Controller::datagram_was_sent( const uint64_t sequence_number,
 				    /* datagram was sent because of a timeout */ )
 {
 
-  update = (outstanding == 0);
-
+  // update = (outstanding == 0);
+// 
   /* AIMD: multiplicative decrease on timeout */
   if(after_timeout){
     update_member(true);
@@ -139,9 +144,7 @@ void Controller::ack_received( const uint64_t sequence_number_acked,
   while(true){
     set<pair<uint64_t, uint64_t> >::iterator it = ts_rtt.begin();
     
-    int keep = 2;
-    if(state > 0)
-      keep = 4;
+    int keep = 3;
 
     if((timestamp_ack_received - (*it).first) > (keep*(float)rtt_)){
       ts_rtt.erase(it);
@@ -154,23 +157,51 @@ void Controller::ack_received( const uint64_t sequence_number_acked,
   outstanding = max(0, outstanding - 1);
   update = (outstanding == 0);
 
+  float rtt_new;
+
+  if(rtt < 0){
+    rtt_new = rtt_;
+    rtt = rtt_;
+  }
+  else {
+    float alpha = 0.95; // moving mean
+    rtt_new = alpha*rtt + (1-alpha)*rtt_;
+  }
+
+  rtt = rtt_new;
+  rtt_ = rtt; // this is to remove the effect noise 
+  // rtt_ = min((uint64_t)rtt, rtt_); // this is to remove the effect noise 
+
   float min_rtt, mean, dev;
   get_stat(min_rtt, mean, dev);
   bool stable = (dev/mean < 0.1);
   
-  // transisition to stable state
+  // state transitions
+  // 0 : unstable
+  // 1 : stable
+  // 2 : prob
+  // 3 : cool off
   if(state == 0 && (stable || rtt_/min_rtt < 1.1)){ // queue has cleared
     state = 1;
+    outstanding = 0;
+    prob_probability = base_prob_probability;
   } else if(state == 1 && outstanding == 0){
-    state = 2;
+    if(rtt_/min_rtt < 1.1 || stable){
+      float seed = (rand() %100 )/ 100.0;
+      if(seed < prob_probability){
+        state = 2;
+      }else{
+        state = 1;
+        prob_probability = min(1.0, prob_probability*1.1); 
+      }
+    } else {
+      state = 0;
+    }
   } else if(state == 2 && outstanding == 0){
     state = 3;
   } else if(state == 3 && outstanding == 0){
-    state = 4;
-  } else if(state == 4 && outstanding == 0){
-    // state = 5;
-  // } else if(state == 5 && outstanding == 0){
-    // decision
+    
+    // find max and min rtts in the 2 previous rtts
     float min_rtt = 10000000;
     float max_rtt = 0;
     set<pair<uint64_t, uint64_t> > :: iterator it = ts_rtt.begin();
@@ -180,28 +211,25 @@ void Controller::ack_received( const uint64_t sequence_number_acked,
       max_rtt = max(rtt_t, max_rtt);
       it++;
     }
+
     if(max_rtt/min_rtt < 1.5 || dev/mean < 0.1){
-      state = 1;  // go again into probing
       outstanding = window_size();
-      window_size_ = window_size_*1.5; // probe successful change baseline
+      window_size_ = (window_size_/(2-inc))*inc; // probe successful change baseline
+      // prob_probability = min(prob_probability*1.1, 1.0);
+      // float seed = (rand() %100 )/ 100.0;
+      // if(seed < prob_probability){
+        state = 2;
+      // }else{
+        // state = 1; 
+      // }
     } else {
-      state = 0; // go to unstable phase
+      window_size_ = (window_size_/(2-inc));
+      prob_probability = base_prob_probability;
+      state = 1; // go to unstable phase
     }
   }
 
   bool halved = false;
-  float rtt_new;
-
-  if(rtt < 0){
-    rtt_new = rtt_;
-    rtt = rtt_;
-  }
-  else {
-    float alpha = 0.8;
-    rtt_new = alpha*rtt + (1-alpha)*rtt_;
-  }
-
-  rtt = rtt_new;
 
   if(rtt_/min_rtt > 1.5 && state == 0){ // halving only when unstable
     update_member(true);
@@ -226,8 +254,8 @@ void Controller::ack_received( const uint64_t sequence_number_acked,
 
     cerr << "At time " << timestamp_ack_received
       << " , RTT: " << (int)rtt_
-      << " , RTT_old: " << (int)rtt
-      << " , RTT_new: " << (int)rtt_new
+      // << " , RTT_old: " << (int)rtt
+      // << " , RTT_new: " << (int)rtt_new
       << " , CWND: " << window_size() 
       << " , halved: " << halved
       << " , update: " << update
@@ -236,6 +264,7 @@ void Controller::ack_received( const uint64_t sequence_number_acked,
       << " , stable: " << stable
       << " , state: " << state
       << ", outstanding: " << outstanding
+      << ", prob: " << prob_probability
       << endl;
   }
 
