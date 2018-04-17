@@ -12,12 +12,12 @@
 using namespace std;
 
 const float inc = 1.25f;
-const float base_prob_probability = 0.6f;
+const float base_prob_probability = 0.2f;
 
 /* Default constructor */
 Controller::Controller( const bool debug )
   : debug_( debug ),
-    alpha(2.f),
+    alpha(1.f),
     beta(0.7f),
     window_size_(1.f),
     state(0),
@@ -75,7 +75,6 @@ void Controller::update_member(bool timeout, int state = 0)
     } else if(state == 1 && update){
       if(outstanding == 0)
         outstanding = window_size();
-      window_size_ = max(1.f, window_size_ + alpha/window_size_);
       // window_size_ = window_size_;  // stable
     } else if(state == 2 && update){
       if(outstanding == 0)
@@ -85,6 +84,8 @@ void Controller::update_member(bool timeout, int state = 0)
       if(outstanding == 0)
         outstanding = window_size();
       window_size_ = (window_size_/inc)* (2-inc); // control queue
+    } else if(state == 1){
+      window_size_ = max(1.f, window_size_ + alpha/window_size_);      
     }
   }
 
@@ -139,6 +140,7 @@ void Controller::ack_received( const uint64_t sequence_number_acked,
                                /* when the ack was received (by sender) */
 {
   uint64_t rtt_ = (timestamp_ack_received - send_timestamp_acked);
+  uint64_t rtt_curr = (timestamp_ack_received - send_timestamp_acked);
   ts_rtt.insert(make_pair(timestamp_ack_received, rtt_));
   // refine the set 
   while(true){
@@ -181,12 +183,12 @@ void Controller::ack_received( const uint64_t sequence_number_acked,
   // 1 : stable
   // 2 : prob
   // 3 : cool off
-  if(state == 0 && (stable || rtt_/min_rtt < 1.1)){ // queue has cleared
+  if(state == 0 && (stable || min(rtt_, rtt_curr)/min_rtt < 1.1)){ // queue has cleared
     state = 1;
     outstanding = 0;
     prob_probability = base_prob_probability;
   } else if(state == 1 && outstanding == 0){
-    if(rtt_/min_rtt < 1.1 || stable){
+    if(min(rtt_, rtt_curr)/min_rtt < 1.1 || stable){
       float seed = (rand() %100 )/ 100.0;
       if(seed < prob_probability){
         state = 2;
@@ -231,7 +233,7 @@ void Controller::ack_received( const uint64_t sequence_number_acked,
 
   bool halved = false;
 
-  if(rtt_/min_rtt > 1.5 && state == 0){ // halving only when unstable
+  if(min(rtt_, rtt_curr)/min_rtt > 1.5 && state == 0){ // halving only when unstable
     update_member(true);
     if(update)
       halved = true;
