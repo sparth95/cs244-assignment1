@@ -68,17 +68,6 @@ void Controller::datagram_was_sent( const uint64_t sequence_number,
 
   /* AIMD: multiplicative decrease on timeout */
   if(after_timeout){
-    // if(update){
-    //   window_size_ = max(1.f, window_size_ * beta);
-    //   update = false;
-    // }
-    // if(window_size_ < 2.f){
-    //   // mult_inc = true;
-    //   mult_inc = false;
-    // }
-    // else{
-    //   mult_inc = false;
-    // }
     update_member(true);
   }
 
@@ -100,25 +89,12 @@ void Controller::ack_received( const uint64_t sequence_number_acked,
 {
 
   if((timestamp_ack_received - send_timestamp_acked) > timeout_ms()){
-    // if(update){
-    //   window_size_ = max(1.f, window_size_ * beta);
-    // }
     update_member(true);
     update = false;
   } else {
     update_member(false);
   }
-  // else if(update){
-  //   /* AIMD: additive increase */
-  //   if(!mult_inc){
-  //     // mult_inc = false;
-  //     window_size_ = max(1.f, window_size_ + alpha/window_size_);
-  //   }
-  //   else{
-  //     window_size_ = window_size_ + 2.f; // to catch the trend faster
-  //   }
-  // }
-  // window_size();
+
   
   if ( debug_ ) {
     cerr << "At time " << timestamp_ack_received
