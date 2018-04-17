@@ -25,11 +25,14 @@ private:
   float rtt;
   float queue_delay;
   long q_;
+  long timeout;
+  int target;
+  int left;
+  long next_transmission;
   pair<long, long> last_ack; 
   set< pair<uint64_t, uint64_t> > ts_rtt;
   void update_member(bool timeout, int state);
   void get_stat(float &min, float &mean, float &dev);
-
 public:
   /* Public interface for the congestion controller */
   /* You can change these if you prefer, but will need to change
