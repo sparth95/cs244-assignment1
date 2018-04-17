@@ -11,7 +11,6 @@ using namespace std;
 Controller::Controller( const bool debug )
   : debug_( debug )
 {
-  window_size = 1.f; // init
 }
 
 /* Get current window size, in datagrams */
