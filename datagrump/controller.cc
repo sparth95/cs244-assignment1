@@ -81,8 +81,8 @@ void Controller::update_member(bool timeout, int state = 0)
       if(outstanding == 0)
         outstanding = window_size();
       if(step_inc < 0)
-        // window_size_ = max(1.f, window_size_ + alpha/window_size_);
-        window_size_ = window_size_;
+        window_size_ = max(1.f, window_size_ + alpha/window_size_);
+        // window_size_ = window_size_;
       else 
         window_size_ = max(1.f, window_size_ + step_inc);
     } else if(state == 2){
@@ -161,7 +161,7 @@ void Controller::ack_received( const uint64_t sequence_number_acked,
   while(true){
     set<pair<uint64_t, uint64_t> >::iterator it = ts_rtt.begin();
     
-    int keep = 2;
+    int keep = 4;
 
     if((timestamp_ack_received - (*it).first) > (keep*(float)rtt_)){
       ts_rtt.erase(it);
@@ -186,7 +186,6 @@ void Controller::ack_received( const uint64_t sequence_number_acked,
   }
 
   rtt = rtt_new;
-  rtt_ = rtt; // this is to remove the effect noise 
 
   float min_rtt, mean, dev;
   get_stat(min_rtt, mean, dev);
@@ -194,8 +193,8 @@ void Controller::ack_received( const uint64_t sequence_number_acked,
   // bool stable = (dev/mean < 0.1) || (min(rtt_, (timestamp_ack_received - send_timestamp_acked))/min_rtt < 1.1);
   // bool panic = (timestamp_ack_received - send_timestamp_acked)/min_rtt > 2;
 
-  bool stable = (q_ < 10);
-  bool panic = (q_/max(queue_delay, 0.000001f) > 3); // max for numeric stability
+  bool stable = (q_ < 10) || (rtt_/min_rtt < 1.1);
+  bool panic = (q_/max(queue_delay, 0.000001f) > 3) || (rtt_/min_rtt > 2); // max for numeric stability
   
   // bool queue_cleared = ((timestamp_ack_received - send_timestamp_acked)/min_rtt) < 1.1;
   // state transitions
@@ -242,19 +241,6 @@ void Controller::ack_received( const uint64_t sequence_number_acked,
   } else if(state == 2 && outstanding == 0){
     state = 3;
   } else if(state == 3 && outstanding == 0){
-    // find max and min rtts in the 2 previous rtts
-    // float min_rtt = 10000000;
-    // float max_rtt = 0;
-    
-    // set<pair<uint64_t, uint64_t> > :: iterator it = ts_rtt.begin();
-    // while(it != ts_rtt.end()){
-    //   float rtt_t = (*it).second;
-    //   min_rtt = min(rtt_t, min_rtt);
-    //   max_rtt = max(rtt_t, max_rtt);
-    //   it++;
-    // }
-
-    // if(max_rtt/min_rtt < 1.5 || dev/mean < 0.1){
     if(stable){
       outstanding = window_size();
 
@@ -281,7 +267,6 @@ void Controller::ack_received( const uint64_t sequence_number_acked,
 
   bool halved = false;
 
-  // if(min(rtt_, (timestamp_ack_received - send_timestamp_acked))/min_rtt > 1.5 && state == 0){ // halving only when unstable
   if(!stable && state == 0){ // halving only when unstable
     update_member(true);
     if(update)
