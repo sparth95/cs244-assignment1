@@ -67,19 +67,18 @@ void Controller::update_member(bool timeout, int state = 0)
     } else if(state == 1 && update){
       if(outstanding == 0)
         outstanding = window_size();
-      window_size_ = window_size_ * 1.5f; // probe
+      window_size_ = window_size_ * 1.25f; // probe
     } else if(state == 2 && update){
       outstanding = window_size();
-      window_size_ = (window_size_ / 1.5f) * 0.5f; // counter the queues
+      window_size_ = (window_size_ / 1.25f) * 0.75f; // counter the queues
     } else if(state == 3 && update){
       outstanding = window_size();
-      window_size_ = window_size_*2.f; // stable pace
+      window_size_ = window_size_/0.75f; // stable pace
     } else if(state == 4 && update){
       outstanding = window_size();  // stable pace
       window_size_ = window_size_;
-    // } else if(state == 5 && update){
-    //   outstanding = window_size();
-    //   window_size_ = window_size_; // stable pace
+    } else if(state == 3){
+      window_size_ = max(1.f, window_size_ + alpha/window_size_);
     }
   }
 
@@ -94,8 +93,8 @@ unsigned int Controller::window_size()
   int the_window_size = floor(window_size_);
 
   if ( debug_ ) {
-    // cerr << "At time " << timestamp_ms()
-	 // << " window size is " << the_window_size << endl;
+    cerr << "At time " << timestamp_ms()
+	 << " window size is " << the_window_size << endl;
   }
 
   return the_window_size;
@@ -183,7 +182,7 @@ void Controller::ack_received( const uint64_t sequence_number_acked,
     if(max_rtt/min_rtt < 1.5 || dev/mean < 0.1){
       state = 1;  // go again into probing
       outstanding = window_size();
-      window_size_ = window_size_*1.5; // probe successful change baseline
+      window_size_ = window_size_*1.25; // probe successful change baseline
     } else {
       state = 0; // go to unstable phase
     }
@@ -211,9 +210,6 @@ void Controller::ack_received( const uint64_t sequence_number_acked,
   } else {
     update_member(false, state);
   }
-  
-
-
 
   if ( debug_ ) {
     if(false){
