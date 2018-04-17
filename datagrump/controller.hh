@@ -23,6 +23,9 @@ private:
   int outstanding;
   float prob_probability;
   float rtt;
+  float queue_delay;
+  long q_;
+  pair<long, long> last_ack; 
   set< pair<uint64_t, uint64_t> > ts_rtt;
   void update_member(bool timeout, int state);
   void get_stat(float &min, float &mean, float &dev);
