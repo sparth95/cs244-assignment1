@@ -11,8 +11,9 @@
 
 using namespace std;
 
-const float inc = 1.25f;
-const float base_prob_probability = 0.6f;
+float inc = 1.25f;
+const float base_prob_probability = 0.4f;
+float step_inc = -1.f;
 
 /* Default constructor */
 Controller::Controller( const bool debug )
@@ -71,16 +72,22 @@ void Controller::update_member(bool timeout, int state = 0)
   }  
   else{
     if(state == 0){
-      window_size_ = max(1.f, window_size_ + alpha/window_size_);
-    } else if(state == 1 && update){
+      // window_size_ = max(1.f, window_size_ + alpha/window_size_);
+      window_size_ = window_size_; // mo increase in unstable
+    } else if(state == 1){
       if(outstanding == 0)
         outstanding = window_size();
-      window_size_ = max(1.f, window_size_ + alpha/window_size_);
-      // window_size_ = window_size_;  // stable
-    } else if(state == 2 && update){
+      if(step_inc < 0)
+        window_size_ = max(1.f, window_size_ + alpha/window_size_);
+        // window_size_ = window_size_;
+      else 
+        window_size_ = max(1.f, window_size_ + step_inc);
+    } else if(state == 2){
       if(outstanding == 0)
         outstanding = window_size();
-      window_size_ = window_size_*inc; // probe
+      
+      window_size_ = max(1.f, window_size_ + step_inc);
+      // window_size_ = window_size_*inc; // probe
     } else if(state == 3 && update){
       if(outstanding == 0)
         outstanding = window_size();
@@ -122,7 +129,7 @@ void Controller::datagram_was_sent( const uint64_t sequence_number,
     update_member(true);
   }
 
-  if ( debug_ && false) {
+  if ( debug_) {
     cerr << "At time " << send_timestamp
 	 << " sent datagram " << sequence_number << " (timeout = " << after_timeout << ")\n";
   }
@@ -144,7 +151,7 @@ void Controller::ack_received( const uint64_t sequence_number_acked,
   while(true){
     set<pair<uint64_t, uint64_t> >::iterator it = ts_rtt.begin();
     
-    int keep = 3;
+    int keep = 2;
 
     if((timestamp_ack_received - (*it).first) > (keep*(float)rtt_)){
       ts_rtt.erase(it);
@@ -170,28 +177,53 @@ void Controller::ack_received( const uint64_t sequence_number_acked,
 
   rtt = rtt_new;
   rtt_ = rtt; // this is to remove the effect noise 
-  // rtt_ = min((uint64_t)rtt, rtt_); // this is to remove the effect noise 
 
   float min_rtt, mean, dev;
   get_stat(min_rtt, mean, dev);
-  bool stable = (dev/mean < 0.1);
+
+  bool stable = (dev/mean < 0.1) || (min(rtt_, (timestamp_ack_received - send_timestamp_acked))/min_rtt < 1.1);
   
+  // bool queue_cleared = ((timestamp_ack_received - send_timestamp_acked)/min_rtt) < 1.1;
   // state transitions
   // 0 : unstable
   // 1 : stable
   // 2 : prob
   // 3 : cool off
-  if(state == 0 && (stable || rtt_/min_rtt < 1.1)){ // queue has cleared
+  if((timestamp_ack_received - send_timestamp_acked)/min_rtt > 2 && state != 0 && state != 3){ // significant increase in the rtt compared to prvious min
+    // shortcut to unstable
+
+    if(step_inc > 0){
+      window_size_ += outstanding*step_inc; // the current window size
+    }
+    // cerr << "window_size_ " << window_size_ << " ";
+    // restore last stable window size
+    if(state == 1){
+      window_size_ = window_size_ /(inc);
+    }
+    if(state == 3){
+      window_size_ = window_size_/(2-inc);
+    }
+
+    prob_probability = base_prob_probability;
+    state = 0;
+    outstanding = 0;
+    cerr << "short circuit to state 0" << window_size_ << endl;
+  }
+  else if(state == 0 && stable){ // queue has cleared
     state = 1;
     outstanding = 0;
     prob_probability = base_prob_probability;
   } else if(state == 1 && outstanding == 0){
-    if(rtt_/min_rtt < 1.1 || stable){
+    if(stable){
       float seed = (rand() %100 )/ 100.0;
       if(seed < prob_probability){
         state = 2;
+        float new_window = window_size_ * inc;
+        int steps = window_size(); // current_outstanding packets
+        step_inc = (new_window - window_size_)/steps;
       }else{
         state = 1;
+        step_inc = -1.f;
         prob_probability = min(1.0, prob_probability*1.1); 
       }
     } else {
@@ -200,7 +232,6 @@ void Controller::ack_received( const uint64_t sequence_number_acked,
   } else if(state == 2 && outstanding == 0){
     state = 3;
   } else if(state == 3 && outstanding == 0){
-    
     // find max and min rtts in the 2 previous rtts
     float min_rtt = 10000000;
     float max_rtt = 0;
@@ -214,24 +245,31 @@ void Controller::ack_received( const uint64_t sequence_number_acked,
 
     if(max_rtt/min_rtt < 1.5 || dev/mean < 0.1){
       outstanding = window_size();
-      window_size_ = (window_size_/(2-inc))*inc; // probe successful change baseline
-      // prob_probability = min(prob_probability*1.1, 1.0);
-      // float seed = (rand() %100 )/ 100.0;
-      // if(seed < prob_probability){
-        state = 2;
-      // }else{
-        // state = 1; 
-      // }
+
+      int steps = outstanding;
+      float new_window = (window_size_/(2-inc))*inc*inc; // probe successful change baseline and being next probe
+      step_inc = (new_window - window_size_)/steps;
+      state = 2;
     } else {
-      window_size_ = (window_size_/(2-inc));
+      outstanding = window_size();
+      
+      int steps = outstanding;
+      float new_window = (window_size_/(2-inc));
+      step_inc = (new_window - window_size_)/steps;
+
       prob_probability = base_prob_probability;
-      state = 1; // go to unstable phase
+      state = 1; // go to stable phase
     }
+  }
+
+  // reset step_inc when not needed
+  if(state == 0 || state == 3){
+    step_inc = -1.f;
   }
 
   bool halved = false;
 
-  if(rtt_/min_rtt > 1.5 && state == 0){ // halving only when unstable
+  if(min(rtt_, (timestamp_ack_received - send_timestamp_acked))/min_rtt > 1.5 && state == 0){ // halving only when unstable
     update_member(true);
     if(update)
       halved = true;
@@ -244,18 +282,16 @@ void Controller::ack_received( const uint64_t sequence_number_acked,
 
 
   if ( debug_ ) {
-    if(false){
+    // if(false){
       cerr << "At time " << timestamp_ack_received
        << " received ack for datagram " << sequence_number_acked
        << " (send @ time " << (int)send_timestamp_acked
        << ", received @ time " << (int)recv_timestamp_acked << " by receiver's clock) " 
        << endl;
-    }
+    // }
 
     cerr << "At time " << timestamp_ack_received
-      << " , RTT: " << (int)rtt_
-      // << " , RTT_old: " << (int)rtt
-      // << " , RTT_new: " << (int)rtt_new
+      << " , RTT: " << (timestamp_ack_received - send_timestamp_acked)
       << " , CWND: " << window_size() 
       << " , halved: " << halved
       << " , update: " << update
@@ -274,5 +310,5 @@ void Controller::ack_received( const uint64_t sequence_number_acked,
    before sending one more datagram */
 unsigned int Controller::timeout_ms()
 {
-  return 80; /* timeout of one second */
+  return 2*max(rtt, 40.f); /* timeout of one second */
 }
