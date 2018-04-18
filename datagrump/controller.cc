@@ -25,7 +25,7 @@ Controller::Controller( const bool debug )
     outstanding(0),
     prob_probability(base_prob_probability),
     rtt(0),
-    timeout_(80),
+    timeout_(60),
     ts_rtt(set<pair<uint64_t, uint64_t> >())
 {}
 
@@ -121,7 +121,7 @@ void Controller::datagram_was_sent( const uint64_t sequence_number,
 // 
   /* AIMD: multiplicative decrease on timeout */
   if(after_timeout){
-    timeout_ *= 1.1;
+    timeout_ *= 1.5;
     update_member(true);
   }
 
@@ -272,7 +272,7 @@ void Controller::ack_received( const uint64_t sequence_number_acked,
       << endl;
   }
 
-  timeout_ = max((int)(2*rtt), 80);
+  timeout_ = min((int)(2*rtt), 60);
 }
 
 /* How long to wait (in milliseconds) if there are no acks
