@@ -12,7 +12,7 @@
 using namespace std;
 
 const float inc = 1.25f;
-const float base_prob_probability = 0.2f;
+const float base_prob_probability = 0.4f;
 
 /* Default constructor */
 Controller::Controller( const bool debug )
@@ -25,6 +25,7 @@ Controller::Controller( const bool debug )
     outstanding(0),
     prob_probability(base_prob_probability),
     rtt(0),
+    timeout_(80),
     ts_rtt(set<pair<uint64_t, uint64_t> >())
 {}
 
@@ -120,10 +121,11 @@ void Controller::datagram_was_sent( const uint64_t sequence_number,
 // 
   /* AIMD: multiplicative decrease on timeout */
   if(after_timeout){
+    timeout_ *= 1.1;
     update_member(true);
   }
 
-  if ( debug_ && false) {
+  if ( debug_&& after_timeout) {
     cerr << "At time " << send_timestamp
 	 << " sent datagram " << sequence_number << " (timeout = " << after_timeout << ")\n";
   }
@@ -270,11 +272,12 @@ void Controller::ack_received( const uint64_t sequence_number_acked,
       << endl;
   }
 
+  timeout_ = max((int)(2*rtt), 80);
 }
 
 /* How long to wait (in milliseconds) if there are no acks
    before sending one more datagram */
 unsigned int Controller::timeout_ms()
 {
-  return 80; /* timeout of one second */
+  return timeout_; /* timeout of one second */
 }
