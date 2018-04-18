@@ -272,7 +272,7 @@ void Controller::ack_received( const uint64_t sequence_number_acked,
       << endl;
   }
 
-  timeout_ = min((int)(2*rtt), 60);
+  timeout_ = max((int)(min_rtt), 60);
 }
 
 /* How long to wait (in milliseconds) if there are no acks
